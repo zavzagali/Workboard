@@ -1,0 +1,19 @@
+name: build
+on: [ pull_request, push, workflow_dispatch ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc g++ pkg-config libfontconfig1-dev libfreetype6-dev libxcb-xfixes0-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xkb-dev libxkbcommon-dev libssl-dev
+
+      - name: Conf
+        run: cmake -Bbuild -GNinja
+
+      - name: Build
+        run: cmake --build build
