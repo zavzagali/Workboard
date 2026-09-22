@@ -127,17 +127,7 @@ export component Sandbox inherits Rectangle {
 
     // ---------- layers ----------
 
-    hint := Text {
-        text: "Right-click: new widget   -   Middle-drag: pan   -   Wheel: zoom";
-        color: #6e6e6e;
-        font-size: 12px;
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
+
 
     // Subtle world-locked background grid (minor every 32px, major every 160px).
     for i in 126 : Rectangle {
@@ -169,6 +159,17 @@ export component Sandbox inherits Rectangle {
         background: #343434;
     }
 
+    hint := Text {
+        text: "Right-click: new widget   -   Middle-drag: pan   -   Wheel: zoom";
+        color: #6e6e6e;
+        font-size: 12px;
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
     canvas := TouchArea {
         x: 0;
         y: 0;
