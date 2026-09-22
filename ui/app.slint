@@ -1,6 +1,15 @@
+import { Sandbox } from "sandbox.slint";
+
 export component App inherits Window {
     title: "WorkBoard";
-    preferred-width: 900px;
-    preferred-height: 600px;
-    background: rgb(34, 34, 34);
+    preferred-width: 1100px;
+    preferred-height: 700px;
+    min-width: 800px;
+    min-height: 500px;
+    background: #202020;
+
+    sandbox := Sandbox {
+        width: 100%;
+        height: 100%;
+    }
 }

@@ -1,0 +1,283 @@
+component CtlBtn inherits Rectangle {
+    in property <string> label;
+    callback tapped();
+
+    width: 26px;
+    height: 22px;
+    background: ta.has-hover ? #404040 : #333333;
+    border-color: #555555;
+    border-width: 1px;
+
+    Text {
+        text: root.label;
+        color: #eeeeee;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    ta := TouchArea {
+        clicked => {
+            root.tapped();
+        }
+    }
+}
+
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    callback tapped();
+
+    height: 28px;
+    background: ta.has-hover ? #3a3a3a : transparent;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        Text {
+            text: root.label;
+            color: ta.has-hover ? #ffffff : #dddddd;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+
+    ta := TouchArea {
+        clicked => {
+            root.tapped();
+        }
+    }
+}
+
+export component Sandbox inherits Rectangle {
+    background: #202020;
+    border-color: #383838;
+    border-width: 1px;
+    clip: true;
+
+    in-out property <float> zoom: 1.0;
+    in-out property <length> view-ox: 0px;
+    in-out property <length> view-oy: 0px;
+    property <float> _nz: 1.0;
+
+    property <bool> menu-open: false;
+    property <length> menu-sx: 0px;
+    property <length> menu-sy: 0px;
+
+    property <bool> panning: false;
+    property <length> pan-mx: 0px;
+    property <length> pan-my: 0px;
+    property <length> pan-ox: 0px;
+    property <length> pan-oy: 0px;
+
+    // ---------- view (pan / zoom) ----------
+
+    // Zoom around screen point (mx, my). delta comes from wheel scroll.
+    function apply-zoom(delta: length, mx: length, my: length) {
+        self._nz = Math.clamp(self.zoom * (1.0 - delta / 1px / 800.0), 0.3, 2.5);
+        self.view-ox = mx - (mx - self.view-ox) / self.zoom * self._nz;
+        self.view-oy = my - (my - self.view-oy) / self.zoom * self._nz;
+        self.zoom = self._nz;
+        self.menu-open = false;
+    }
+
+    function zoom-step(factor: float) {
+        self._nz = Math.clamp(self.zoom * factor, 0.3, 2.5);
+        self.view-ox = self.width / 2 - (self.width / 2 - self.view-ox) / self.zoom * self._nz;
+        self.view-oy = self.height / 2 - (self.height / 2 - self.view-oy) / self.zoom * self._nz;
+        self.zoom = self._nz;
+    }
+
+    public function reset-view() {
+        self.zoom = 1.0;
+        self.view-ox = 0px;
+        self.view-oy = 0px;
+        self.menu-open = false;
+    }
+
+    function pan-start(mx: length, my: length) {
+        self.panning = true;
+        self.pan-mx = mx;
+        self.pan-my = my;
+        self.pan-ox = self.view-ox;
+        self.pan-oy = self.view-oy;
+        self.menu-open = false;
+    }
+
+    function pan-move(mx: length, my: length) {
+        if (self.panning) {
+            self.view-ox = self.pan-ox + mx - self.pan-mx;
+            self.view-oy = self.pan-oy + my - self.pan-my;
+        }
+    }
+
+    function pan-end() {
+        self.panning = false;
+    }
+
+    function open-menu(sx: length, sy: length) {
+        self.menu-sx = Math.max(0px, Math.min(sx, self.width - 190px));
+        self.menu-sy = Math.max(0px, Math.min(sy, self.height - 44px));
+        self.menu-open = true;
+    }
+
+    // ---------- layers ----------
+
+    hint := Text {
+        text: "Right-click: new widget   -   Middle-drag: pan   -   Wheel: zoom";
+        color: #6e6e6e;
+        font-size: 12px;
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Subtle world-locked background grid (minor every 32px, major every 160px).
+    for i in 126 : Rectangle {
+        x: (i * 32px - 2000px) * root.zoom + root.view-ox;
+        y: -2000px * root.zoom + root.view-oy;
+        width: 1px;
+        height: 4000px * root.zoom;
+        background: #2a2a2a;
+    }
+    for i in 126 : Rectangle {
+        x: -2000px * root.zoom + root.view-ox;
+        y: (i * 32px - 2000px) * root.zoom + root.view-oy;
+        width: 4000px * root.zoom;
+        height: 1px;
+        background: #2a2a2a;
+    }
+    for i in 26 : Rectangle {
+        x: (i * 160px - 2000px) * root.zoom + root.view-ox;
+        y: -2000px * root.zoom + root.view-oy;
+        width: 1px;
+        height: 4000px * root.zoom;
+        background: #343434;
+    }
+    for i in 26 : Rectangle {
+        x: -2000px * root.zoom + root.view-ox;
+        y: (i * 160px - 2000px) * root.zoom + root.view-oy;
+        width: 4000px * root.zoom;
+        height: 1px;
+        background: #343434;
+    }
+
+    canvas := TouchArea {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                root.open-menu(self.mouse-x, self.mouse-y);
+                EventResult.accept
+            } else if (event.button == PointerEventButton.middle && event.kind == PointerEventKind.down) {
+                root.pan-start(self.mouse-x, self.mouse-y);
+                EventResult.accept
+            } else if (event.button == PointerEventButton.middle && (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel)) {
+                root.pan-end();
+                EventResult.accept
+            } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                root.menu-open = false;
+                EventResult.reject
+            } else {
+                EventResult.reject
+            }
+        }
+
+        moved => {
+            if (root.panning) {
+                root.pan-move(self.mouse-x, self.mouse-y);
+            }
+        }
+
+        scroll-event(event) => {
+            root.apply-zoom(event.delta-y, self.mouse-x, self.mouse-y);
+            EventResult.accept
+        }
+    }
+
+    menu := Rectangle {
+        visible: root.menu-open;
+        x: root.menu-sx;
+        y: root.menu-sy;
+        width: 170px;
+        height: 32px;
+        background: #2b2b2b;
+        border-color: #555555;
+        border-width: 1px;
+        z: 1000000000;
+
+        VerticalLayout {
+            padding: 2px;
+            spacing: 0;
+
+            MenuRow {
+                label: "New Note";
+                tapped => {
+                    // Note widget removed; spawn re-implemented from scratch next.
+                    root.menu-open = false;
+                }
+            }
+        }
+    }
+
+    controls := Rectangle {
+        x: root.width - self.width - 12px;
+        y: root.height - self.height - 12px;
+        width: 250px;
+        height: 30px;
+        background: #2b2b2b;
+        border-color: #4a4a4a;
+        border-width: 1px;
+        z: 999999999;
+
+        HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            alignment: center;
+
+            CtlBtn {
+                label: "-";
+                tapped => {
+                    root.zoom-step(1 / 1.2);
+                }
+            }
+            Text {
+                text: Math.round(root.zoom * 100) + "%";
+                color: #e0e0e0;
+                font-size: 12px;
+                width: 46px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            CtlBtn {
+                label: "+";
+                tapped => {
+                    root.zoom-step(1.2);
+                }
+            }
+            CtlBtn {
+                label: "R";
+                tapped => {
+                    root.reset-view();
+                }
+            }
+            Text {
+                text: Math.round(root.width / 1px) + "x" + Math.round(root.height / 1px);
+                color: #8a8a8a;
+                font-size: 11px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
