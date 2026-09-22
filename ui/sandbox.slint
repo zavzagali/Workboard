@@ -53,6 +53,14 @@ component MenuRow inherits Rectangle {
     }
 }
 
+struct StickyNote {
+    wx: length,
+    wy: length,
+    color: color,
+    title: string,
+    text: string
+}
+
 export component Sandbox inherits Rectangle {
     background: #202020;
     border-color: #383838;
@@ -74,9 +82,18 @@ export component Sandbox inherits Rectangle {
     property <length> pan-ox: 0px;
     property <length> pan-oy: 0px;
 
+    in-out property <[StickyNote]> notes: [];
+    property <int> color-menu-index: -1;
+
+    property <bool> dragging: false;
+    property <int> drag-index: -1;
+    property <length> drag-mx: 0px;
+    property <length> drag-my: 0px;
+    property <length> drag-nx: 0px;
+    property <length> drag-ny: 0px;
+
     // ---------- view (pan / zoom) ----------
 
-    // Zoom around screen point (mx, my). delta comes from wheel scroll.
     function apply-zoom(delta: length, mx: length, my: length) {
         self._nz = Math.clamp(self.zoom * (1.0 - delta / 1px / 800.0), 0.3, 2.5);
         self.view-ox = mx - (mx - self.view-ox) / self.zoom * self._nz;
@@ -123,11 +140,95 @@ export component Sandbox inherits Rectangle {
         self.menu-sx = Math.max(0px, Math.min(sx, self.width - 190px));
         self.menu-sy = Math.max(0px, Math.min(sy, self.height - 44px));
         self.menu-open = true;
+        self.color-menu-index = -1;
+    }
+
+    function add-note-at(sx: length, sy: length) {
+        self.notes.push({
+            wx: (sx - self.view-ox) / self.zoom,
+            wy: (sy - self.view-oy) / self.zoom,
+            color: #FFF3CD,
+            title: "Note",
+            text: ""
+        });
+        self.menu-open = false;
+        self.color-menu-index = -1;
+    }
+
+    function set-note-color(index: int, c: color) {
+        if (index < 0 || index >= self.notes.length) {
+            return;
+        }
+        self.notes[index] = {
+            wx: self.notes[index].wx,
+            wy: self.notes[index].wy,
+            color: c,
+            title: self.notes[index].title,
+            text: self.notes[index].text
+        };
+        self.color-menu-index = -1;
+    }
+
+    function set-note-text(index: int, t: string) {
+        if (index < 0 || index >= self.notes.length) {
+            return;
+        }
+        self.notes[index] = {
+            wx: self.notes[index].wx,
+            wy: self.notes[index].wy,
+            color: self.notes[index].color,
+            title: self.notes[index].title,
+            text: t
+        };
+    }
+
+    function set-note-title(index: int, t: string) {
+        if (index < 0 || index >= self.notes.length) {
+            return;
+        }
+        self.notes[index] = {
+            wx: self.notes[index].wx,
+            wy: self.notes[index].wy,
+            color: self.notes[index].color,
+            title: t,
+            text: self.notes[index].text
+        };
+    }
+
+    function note-drag-start(index: int, sx: length, sy: length) {
+        if (index < 0 || index >= self.notes.length) {
+            return;
+        }
+        self.dragging = true;
+        self.drag-index = index;
+        self.drag-mx = sx;
+        self.drag-my = sy;
+        self.drag-nx = self.notes[index].wx;
+        self.drag-ny = self.notes[index].wy;
+        self.menu-open = false;
+        self.color-menu-index = -1;
+    }
+
+    function note-drag-move(sx: length, sy: length) {
+        if (!self.dragging || self.drag-index < 0 || self.drag-index >= self.notes.length) {
+            return;
+        }
+        let i = self.drag-index;
+        self.notes[i] = {
+            wx: self.drag-nx + (sx - self.drag-mx) / self.zoom,
+            wy: self.drag-ny + (sy - self.drag-my) / self.zoom,
+            color: self.notes[i].color,
+            title: self.notes[i].title,
+            text: self.notes[i].text
+        };
+    }
+
+    function note-drag-end() {
+        self.dragging = false;
+        self.drag-index = -1;
     }
 
     // ---------- layers ----------
-
-
 
     // Subtle world-locked background grid (minor every 32px, major every 160px).
     for i in 126 : Rectangle {
@@ -160,7 +261,7 @@ export component Sandbox inherits Rectangle {
     }
 
     hint := Text {
-        text: "Right-click: new widget   -   Middle-drag: pan   -   Wheel: zoom";
+        text: root.notes.length == 0 ? "Right-click: New Note   -   Drag note top: move   -   Middle-drag: pan   -   Wheel: zoom" : "";
         color: #6e6e6e;
         font-size: 12px;
         x: 0;
@@ -170,6 +271,7 @@ export component Sandbox inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
+
     canvas := TouchArea {
         x: 0;
         y: 0;
@@ -188,6 +290,7 @@ export component Sandbox inherits Rectangle {
                 EventResult.accept
             } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
                 root.menu-open = false;
+                root.color-menu-index = -1;
                 EventResult.reject
             } else {
                 EventResult.reject
@@ -206,6 +309,154 @@ export component Sandbox inherits Rectangle {
         }
     }
 
+    for note[i] in root.notes : Rectangle {
+        x: note.wx * root.zoom + root.view-ox;
+        y: note.wy * root.zoom + root.view-oy;
+        width: 200px * root.zoom;
+        height: 200px * root.zoom;
+        background: note.color;
+        border-color: #0000002e;
+        border-width: 1px;
+        drop-shadow-blur: 8px;
+        drop-shadow-offset-y: 3px;
+        drop-shadow-color: #00000059;
+        z: root.drag-index == i ? 2000000 : 1000000 + i;
+
+        header := TouchArea {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 24px * root.zoom;
+            mouse-cursor: root.dragging && root.drag-index == i ? grabbing : grab;
+
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                    root.note-drag-start(i, parent.x + self.x + self.mouse-x, parent.y + self.y + self.mouse-y);
+                    EventResult.accept
+                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    if (root.drag-index == i) {
+                        root.note-drag-end();
+                        EventResult.accept
+                    } else {
+                        EventResult.reject
+                    }
+                } else {
+                    EventResult.reject
+                }
+            }
+
+            moved => {
+                if (root.dragging && root.drag-index == i) {
+                    root.note-drag-move(parent.x + self.x + self.mouse-x, parent.y + self.y + self.mouse-y);
+                }
+            }
+
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: header.has-hover || (root.dragging && root.drag-index == i) ? #00000014 : #00000000;
+            }
+        }
+
+        title-input := TextInput {
+            x: 8px * root.zoom;
+            y: 4px * root.zoom;
+            width: parent.width - 40px * root.zoom;
+            height: 20px * root.zoom;
+            text: note.title;
+            color: #00000073;
+            font-size: 11px * root.zoom;
+            font-weight: 700;
+            single-line: true;
+            z: 3;
+            edited => {
+                root.set-note-title(i, self.text);
+            }
+        }
+
+        input := TextInput {
+            x: 8px * root.zoom;
+            y: 26px * root.zoom;
+            width: parent.width - 16px * root.zoom;
+            height: parent.height - 34px * root.zoom;
+            text: note.text;
+            color: #1a1a1a;
+            font-size: 13px * root.zoom;
+            wrap: word-wrap;
+            single-line: false;
+            edited => {
+                root.set-note-text(i, self.text);
+            }
+        }
+
+        gear := TouchArea {
+            x: parent.width - 28px * root.zoom;
+            y: 2px * root.zoom;
+            width: 26px * root.zoom;
+            height: 24px * root.zoom;
+            z: 5;
+
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                background: gear.has-hover ? #0000002e : #00000014;
+                border-radius: 4px * root.zoom;
+
+                Text {
+                    text: "⚙";
+                    color: #333333;
+                    font-size: 14px * root.zoom;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+
+            clicked => {
+                root.color-menu-index = root.color-menu-index == i ? -1 : i;
+                root.menu-open = false;
+            }
+        }
+
+        if root.color-menu-index == i : Rectangle {
+            x: parent.width - self.width - 4px * root.zoom;
+            y: 28px * root.zoom;
+            width: 148px * root.zoom;
+            height: 78px * root.zoom;
+            background: #2b2b2b;
+            border-color: #555555;
+            border-width: 1px;
+            border-radius: 6px * root.zoom;
+            z: 10;
+
+            GridLayout {
+                padding: 6px * root.zoom;
+                spacing: 4px * root.zoom;
+
+                for c[index] in [#FFF3CD, #FFE066, #FFB347, #F4A4A4, #A8E6CF, #88C0D0, #B48EAD, #E8E8E8] : swatch := TouchArea {
+                    row: Math.floor(index / 4);
+                    col: Math.mod(index, 4);
+                    width: 30px * root.zoom;
+                    height: 30px * root.zoom;
+
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: c;
+                        border-color: swatch.has-hover ? #ffffff : #0000004d;
+                        border-width: 1px;
+                        border-radius: 3px * root.zoom;
+                    }
+
+                    clicked => {
+                        root.set-note-color(i, c);
+                    }
+                }
+            }
+        }
+    }
+
     menu := Rectangle {
         visible: root.menu-open;
         x: root.menu-sx;
@@ -215,7 +466,7 @@ export component Sandbox inherits Rectangle {
         background: #2b2b2b;
         border-color: #555555;
         border-width: 1px;
-        z: 1000000000;
+        z: 2000000000;
 
         VerticalLayout {
             padding: 2px;
@@ -224,8 +475,7 @@ export component Sandbox inherits Rectangle {
             MenuRow {
                 label: "New Note";
                 tapped => {
-                    // Note widget removed; spawn re-implemented from scratch next.
-                    root.menu-open = false;
+                    root.add-note-at(root.menu-sx, root.menu-sy);
                 }
             }
         }
@@ -239,7 +489,7 @@ export component Sandbox inherits Rectangle {
         background: #2b2b2b;
         border-color: #4a4a4a;
         border-width: 1px;
-        z: 999999999;
+        z: 2000000000;
 
         HorizontalLayout {
             padding: 4px;
