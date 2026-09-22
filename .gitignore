@@ -1,3 +1,8 @@
 build
+cmake-build-debug
+CMakeFiles
+corrosion
+lib
+_deps
 .idea
 
