@@ -1,3 +1,5 @@
+- [x] Sandbox workspace
+
 ### 1. Whiteboard
 - [ ] Drawing materials
 - [ ] Shape tools (Arrow/Circle etc.)
