@@ -7,6 +7,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Slint build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+
       - name: Dependencies
         run: |
           sudo apt-get update
@@ -24,6 +33,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Slint build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+
       - name: Configure
         run: cmake -Bbuild -GNinja
 
@@ -35,8 +53,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache Slint build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+
       - name: Configure
         run: cmake -Bbuild -GNinja
 
       - name: Build
-        run: cmake --build build 
+        run: cmake --build build
