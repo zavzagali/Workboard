@@ -12,16 +12,17 @@ jobs:
         with:
           path: |
             build/_deps
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-slint-${{ hashFiles('**/CMakeLists.txt') }}
 
       - name: Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build gcc g++ pkg-config libfontconfig1-dev libfreetype6-dev libxcb-xfixes0-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xkb-dev libxkbcommon-dev libssl-dev
 
-      - name: Conf
+      - name: Configure
         run: cmake -Bbuild -GNinja
 
       - name: Build
@@ -38,15 +39,17 @@ jobs:
         with:
           path: |
             build/_deps
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-slint-${{ hashFiles('**/CMakeLists.txt') }}
 
       - name: Configure
         run: cmake -Bbuild -GNinja
 
       - name: Build
-        run: cmake --build build 
+        run: cmake --build build
+
 
   build-macos:
     runs-on: macos-latest
@@ -58,9 +61,10 @@ jobs:
         with:
           path: |
             build/_deps
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-slint-${{ hashFiles('CMakeLists.txt') }}
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-slint-${{ hashFiles('**/CMakeLists.txt') }}
 
       - name: Configure
         run: cmake -Bbuild -GNinja
