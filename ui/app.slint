@@ -1,5 +1,9 @@
 import { Sandbox } from "sandbox.slint";
 
+struct Workspace {
+    name: string,
+}
+
 export component App inherits Window {
     title: "WorkBoard";
     preferred-width: 1100px;
@@ -8,8 +12,146 @@ export component App inherits Window {
     min-height: 500px;
     background: #202020;
 
-    sandbox := Sandbox {
-        width: 100%;
-        height: 100%;
+    in-out property <[Workspace]> workspaces: [{ name: "Workspace 1" }];
+    in-out property <int> ws-active: 0;
+
+    public function select-workspace(index: int) {
+        if (index < 0 || index >= self.workspaces.length) {
+            return;
+        }
+        self.ws-active = index;
+    }
+
+    public function rename-workspace(index: int, t: string) {
+        if (index < 0 || index >= self.workspaces.length) {
+            return;
+        }
+        self.workspaces[index] = { name: t };
+    }
+
+    public function add-workspace() {
+        self.workspaces.push({ name: "Workspace " + (self.workspaces.length + 1) });
+        self.ws-active = self.workspaces.length - 1;
+    }
+
+    VerticalLayout {
+        spacing: 0;
+
+        // ---------- thin top workspace bar ----------
+        topbar := Rectangle {
+            height: 32px;
+            background: #1e1e1e;
+            clip: true;
+
+            bar-layout := HorizontalLayout {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 100%;
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 5px;
+                padding-bottom: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                for ws[tidx] in root.workspaces : tab := Rectangle {
+                    width: 130px;
+                    background: tidx == root.ws-active ? #333333 : #00000000;
+                    border-radius: 4px;
+
+                    if tidx == root.ws-active : Rectangle {
+                        y: parent.height - 2px;
+                        width: 100%;
+                        height: 2px;
+                        background: #4a9eff;
+                    }
+
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.select-workspace(tidx);
+                        }
+                    }
+
+                    name-input := TextInput {
+                        x: 8px;
+                        y: 0;
+                        width: parent.width - 16px;
+                        height: 100%;
+                        text: ws.name;
+                        color: tidx == root.ws-active ? #ffffff : #aaaaaa;
+                        font-size: 12px;
+                        single-line: true;
+                        vertical-alignment: center;
+                        z: 1;
+                        edited => {
+                            root.rename-workspace(tidx, self.text);
+                        }
+                        accepted => {
+                            root.select-workspace(tidx);
+                            self.clear-focus();
+                        }
+                        changed has-focus => {
+                            if (self.has-focus) {
+                                root.select-workspace(tidx);
+                            } else if (self.text == "") {
+                                root.rename-workspace(tidx, "Workspace " + (tidx + 1));
+                            }
+                        }
+                    }
+                }
+
+                filler := Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                add-btn := Rectangle {
+                    width: 24px;
+                    background: add-ta.has-hover ? #404040 : #2b2b2b;
+                    border-color: #4a4a4a;
+                    border-width: 1px;
+                    border-radius: 4px;
+
+                    Text {
+                        text: "+";
+                        color: #e0e0e0;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        width: 100%;
+                        height: 100%;
+                    }
+
+                    add-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.add-workspace();
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: #383838;
+            }
+        }
+
+        // ---------- workspace content (one Sandbox per workspace) ----------
+        content := Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            for w[cidx] in root.workspaces : Sandbox {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 100%;
+                visible: cidx == root.ws-active;
+            }
+        }
     }
 }
