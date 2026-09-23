@@ -88,7 +88,10 @@ export component Sandbox inherits Rectangle {
     in property <int> ws-note-count: 0;
     callback dirty();
     callback note-added();
+    callback note-removed(int);
     property <int> color-menu-index: -1;
+    property <bool> confirm-open: false;
+    property <int> confirm-index: -1;
 
     property <bool> dragging: false;
     property <int> drag-index: -1;
@@ -210,6 +213,39 @@ export component Sandbox inherits Rectangle {
             text: self.notes[index].text,
             ws: self.notes[index].ws
         };
+        self.dirty();
+    }
+
+    function request-delete-note(index: int) {
+        if (index < 0 || index >= self.notes.length) {
+            return;
+        }
+        self.confirm-index = index;
+        self.confirm-open = true;
+        self.menu-open = false;
+        self.color-menu-index = -1;
+    }
+
+    public function cancel-delete-note() {
+        self.confirm-open = false;
+        self.confirm-index = -1;
+    }
+
+    function confirm-delete-note() {
+        let idx = self.confirm-index;
+        if (idx < 0 || idx >= self.notes.length) {
+            self.confirm-open = false;
+            self.confirm-index = -1;
+            return;
+        }
+        let w = self.notes[idx].ws;
+        self.notes.remove(idx);
+        self.confirm-open = false;
+        self.confirm-index = -1;
+        self.dragging = false;
+        self.drag-index = -1;
+        self.color-menu-index = -1;
+        self.note-removed(w);
         self.dirty();
     }
 
@@ -444,34 +480,63 @@ export component Sandbox inherits Rectangle {
             x: parent.width - self.width - 4px * root.zoom;
             y: 28px * root.zoom;
             width: 148px * root.zoom;
-            height: 78px * root.zoom;
+            height: 112px * root.zoom;
             background: #2b2b2b;
             border-color: #555555;
             border-width: 1px;
             border-radius: 6px * root.zoom;
             z: 10;
 
-            GridLayout {
+            VerticalLayout {
                 padding: 6px * root.zoom;
                 spacing: 4px * root.zoom;
 
-                for c[index] in [#FFF3CD, #FFE066, #FFB347, #F4A4A4, #A8E6CF, #88C0D0, #B48EAD, #E8E8E8] : swatch := TouchArea {
-                    row: Math.floor(index / 4);
-                    col: Math.mod(index, 4);
-                    width: 30px * root.zoom;
-                    height: 30px * root.zoom;
+                GridLayout {
+                    spacing: 4px * root.zoom;
 
-                    Rectangle {
+                    for c[index] in [#FFF3CD, #FFE066, #FFB347, #F4A4A4, #A8E6CF, #88C0D0, #B48EAD, #E8E8E8] : swatch := TouchArea {
+                        row: Math.floor(index / 4);
+                        col: Math.mod(index, 4);
+                        width: 30px * root.zoom;
+                        height: 30px * root.zoom;
+
+                        Rectangle {
+                            width: 100%;
+                            height: 100%;
+                            background: c;
+                            border-color: swatch.has-hover ? #ffffff : #0000004d;
+                            border-width: 1px;
+                            border-radius: 3px * root.zoom;
+                        }
+
+                        clicked => {
+                            root.set-note-color(i, c);
+                        }
+                    }
+                }
+
+                del-btn := Rectangle {
+                    height: 24px * root.zoom;
+                    background: del-ta.has-hover ? #5a2a2a : #3a2a2a;
+                    border-color: #774444;
+                    border-width: 1px;
+                    border-radius: 3px * root.zoom;
+
+                    Text {
+                        text: "Delete Note";
+                        color: #ffaaaa;
+                        font-size: 11px * root.zoom;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                         width: 100%;
                         height: 100%;
-                        background: c;
-                        border-color: swatch.has-hover ? #ffffff : #0000004d;
-                        border-width: 1px;
-                        border-radius: 3px * root.zoom;
                     }
 
-                    clicked => {
-                        root.set-note-color(i, c);
+                    del-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.request-delete-note(i);
+                        }
                     }
                 }
             }
@@ -549,6 +614,119 @@ export component Sandbox inherits Rectangle {
                 font-size: 11px;
                 horizontal-alignment: center;
                 vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.confirm-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000080;
+        z: 2000000001;
+
+        bg-ta := TouchArea {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            clicked => {
+                root.cancel-delete-note();
+            }
+            pointer-event(event) => {
+                EventResult.accept
+            }
+        }
+
+        Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            width: 280px;
+            height: 150px;
+            background: #2b2b2b;
+            border-color: #555555;
+            border-width: 1px;
+            border-radius: 8px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000080;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Delete note?";
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: "This note will be permanently deleted.";
+                    color: #aaaaaa;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: 80px;
+                        height: 28px;
+                        background: cancel-ta.has-hover ? #404040 : #333333;
+                        border-color: #555555;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Cancel";
+                            color: #e0e0e0;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        cancel-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.cancel-delete-note();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 80px;
+                        height: 28px;
+                        background: confirm-ta.has-hover ? #a03030 : #802020;
+                        border-color: #aa4444;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Delete";
+                            color: #ffffff;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        confirm-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.confirm-delete-note();
+                            }
+                        }
+                    }
+                }
             }
         }
     }

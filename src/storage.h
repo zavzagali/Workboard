@@ -683,4 +683,88 @@ inline void save_state(const App &app) {
     }
 }
 
+// Delete a workspace: removes its view state, its notes, and reindexes
+// notes that belonged to workspaces after it. Adjusts ws-active so it
+// always points at a valid workspace. Best-effort, never throws.
+inline void delete_workspace(const App &app, int index) {
+    try {
+        auto names = app.get_ws_names();
+        auto zooms = app.get_ws_zooms();
+        auto oxs = app.get_ws_oxs();
+        auto oys = app.get_ws_oys();
+        auto counts = app.get_ws_counts();
+        auto notes = app.get_notes();
+        if (!names)
+            return;
+        const std::size_t n = names->row_count();
+        if (n <= 1 || index < 0 || static_cast<std::size_t>(index) >= n)
+            return;
+
+        // Remove the workspace row from all parallel arrays.
+        names->remove_row(static_cast<std::size_t>(index));
+        if (zooms && static_cast<std::size_t>(index) < zooms->row_count())
+            zooms->remove_row(static_cast<std::size_t>(index));
+        if (oxs && static_cast<std::size_t>(index) < oxs->row_count())
+            oxs->remove_row(static_cast<std::size_t>(index));
+        if (oys && static_cast<std::size_t>(index) < oys->row_count())
+            oys->remove_row(static_cast<std::size_t>(index));
+        if (counts && static_cast<std::size_t>(index) < counts->row_count())
+            counts->remove_row(static_cast<std::size_t>(index));
+
+        // Remove its notes (backwards so indices stay valid) and shift
+        // down the ws tags of notes from later workspaces.
+        if (notes) {
+            for (long i = static_cast<long>(notes->row_count()) - 1; i >= 0; --i) {
+                auto opt = notes->row_data(static_cast<std::size_t>(i));
+                if (!opt)
+                    continue;
+                if (opt->ws == index) {
+                    notes->remove_row(static_cast<std::size_t>(i));
+                } else if (opt->ws > index) {
+                    StickyNote shifted = *opt;
+                    shifted.ws -= 1;
+                    notes->set_row_data(static_cast<std::size_t>(i), shifted);
+                }
+            }
+        }
+
+        // Recompute counts from the remaining notes to heal any drift.
+        if (counts) {
+            const std::size_t new_n = names->row_count();
+            std::vector<int> fresh(new_n, 0);
+            if (notes) {
+                for (std::size_t i = 0; i < notes->row_count(); ++i) {
+                    if (auto opt = notes->row_data(i)) {
+                        if (opt->ws >= 0 && static_cast<std::size_t>(opt->ws) < new_n)
+                            ++fresh[static_cast<std::size_t>(opt->ws)];
+                    }
+                }
+            }
+            for (std::size_t i = 0; i < new_n && i < counts->row_count(); ++i)
+                counts->set_row_data(i, fresh[i]);
+        }
+
+        // Fix the active index (setting it triggers show + persist in Slint).
+        const int new_size = static_cast<int>(names->row_count());
+        if (new_size <= 0)
+            return;
+        int active = app.get_ws_active();
+        int new_active = active;
+        if (index == active)
+            new_active = index < new_size ? index : new_size - 1;
+        else if (index < active)
+            new_active = active - 1;
+        if (new_active < 0)
+            new_active = 0;
+        if (new_active >= new_size)
+            new_active = new_size - 1;
+        if (new_active != active)
+            app.set_ws_active(new_active);
+
+        save_state(app);
+    } catch (...) {
+        // best-effort: deletion must never crash the app
+    }
+}
+
 } // namespace workboard

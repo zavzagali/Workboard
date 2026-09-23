@@ -22,6 +22,12 @@ export component App inherits Window {
 
     // Handled in C++: writes the whole state to the save file immediately.
     callback persist();
+    // Handled in C++: removes the workspace + its notes and reindexes the rest.
+    callback delete-workspace(int);
+
+    property <bool> confirm-open: false;
+    property <int> confirm-index: -1;
+    property <string> confirm-name: "";
 
     function store-view() {
         if (self.ws-active < 0 || self.ws-active >= self.ws-names.length) {
@@ -50,6 +56,7 @@ export component App inherits Window {
         if (index < 0 || index >= self.ws-names.length || index == self.ws-active) {
             return;
         }
+        sandbox.cancel-delete-note();
         self.store-view();
         self.ws-active = index;
     }
@@ -63,6 +70,7 @@ export component App inherits Window {
     }
 
     public function add-workspace() {
+        sandbox.cancel-delete-note();
         self.store-view();
         self.ws-names.push("Workspace " + (self.ws-names.length + 1));
         self.ws-zooms.push(1.0);
@@ -70,6 +78,43 @@ export component App inherits Window {
         self.ws-oys.push(0px);
         self.ws-counts.push(0);
         self.ws-active = self.ws-names.length - 1;
+    }
+
+    public function request-delete-workspace(index: int) {
+        if (index < 0 || index >= self.ws-names.length) {
+            return;
+        }
+        if (self.ws-names.length <= 1) {
+            return;
+        }
+        sandbox.cancel-delete-note();
+        self.confirm-index = index;
+        self.confirm-name = self.ws-names[index];
+        self.confirm-open = true;
+    }
+
+    public function cancel-delete-workspace() {
+        self.confirm-open = false;
+        self.confirm-index = -1;
+    }
+
+    public function confirm-delete-workspace() {
+        let idx = self.confirm-index;
+        if (idx < 0 || idx >= self.ws-names.length) {
+            self.confirm-open = false;
+            self.confirm-index = -1;
+            return;
+        }
+        if (self.ws-names.length <= 1) {
+            self.confirm-open = false;
+            self.confirm-index = -1;
+            return;
+        }
+        self.store-view();
+        self.confirm-open = false;
+        self.confirm-index = -1;
+        sandbox.cancel-delete-note();
+        self.delete-workspace(idx);
     }
 
     // Fires on user switches and once at startup (C++ sets ws-active last),
@@ -172,7 +217,7 @@ export component App inherits Window {
                             name-input := TextInput {
                                 x: 8px;
                                 y: 0;
-                                width: parent.width - 42px;
+                                width: parent.width - 64px;
                                 height: 100%;
                                 text: nm;
                                 color: tidx == root.ws-active ? #ffffff : #aaaaaa;
@@ -197,7 +242,7 @@ export component App inherits Window {
                             }
 
                             count := Text {
-                                x: parent.width - 30px;
+                                x: parent.width - 52px;
                                 y: 0;
                                 width: 22px;
                                 height: 100%;
@@ -206,6 +251,33 @@ export component App inherits Window {
                                 font-size: 11px;
                                 horizontal-alignment: right;
                                 vertical-alignment: center;
+                            }
+
+                            if root.ws-names.length > 1 : Rectangle {
+                                x: parent.width - 24px;
+                                y: 5px;
+                                width: 20px;
+                                height: 20px;
+                                background: del-ta.has-hover ? #5a2a2a : transparent;
+                                border-radius: 4px;
+                                z: 2;
+
+                                Text {
+                                    text: "×";
+                                    color: del-ta.has-hover ? #ff8888 : #777777;
+                                    font-size: 14px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    width: 100%;
+                                    height: 100%;
+                                }
+
+                                del-ta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        root.request-delete-workspace(tidx);
+                                    }
+                                }
                             }
                         }
                     }
@@ -293,6 +365,124 @@ export component App inherits Window {
                 note-added => {
                     if (root.ws-active >= 0 && root.ws-active < root.ws-counts.length) {
                         root.ws-counts[root.ws-active] = root.ws-counts[root.ws-active] + 1;
+                    }
+                }
+                note-removed(ws) => {
+                    if (ws >= 0 && ws < root.ws-counts.length && root.ws-counts[ws] > 0) {
+                        root.ws-counts[ws] = root.ws-counts[ws] - 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if root.confirm-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000080;
+        z: 1000;
+
+        bg-ta := TouchArea {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            clicked => {
+                root.cancel-delete-workspace();
+            }
+            pointer-event(event) => {
+                EventResult.accept
+            }
+        }
+
+        Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            width: 320px;
+            height: 170px;
+            background: #2b2b2b;
+            border-color: #555555;
+            border-width: 1px;
+            border-radius: 8px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000080;
+
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+
+                Text {
+                    text: "Delete workspace?";
+                    color: #ffffff;
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: "'" + root.confirm-name + "' and its " + (root.confirm-index >= 0 && root.confirm-index < root.ws-counts.length ? root.ws-counts[root.confirm-index] : 0) + ((root.confirm-index >= 0 && root.confirm-index < root.ws-counts.length ? root.ws-counts[root.confirm-index] : 0) == 1 ? " note" : " notes") + " will be permanently deleted.";
+                    color: #aaaaaa;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    Rectangle {
+                        width: 80px;
+                        height: 28px;
+                        background: ws-cancel-ta.has-hover ? #404040 : #333333;
+                        border-color: #555555;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Cancel";
+                            color: #e0e0e0;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        ws-cancel-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.cancel-delete-workspace();
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 80px;
+                        height: 28px;
+                        background: ws-confirm-ta.has-hover ? #a03030 : #802020;
+                        border-color: #aa4444;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "Delete";
+                            color: #ffffff;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        ws-confirm-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.confirm-delete-workspace();
+                            }
+                        }
                     }
                 }
             }
