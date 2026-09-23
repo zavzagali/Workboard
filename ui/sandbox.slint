@@ -53,12 +53,13 @@ component MenuRow inherits Rectangle {
     }
 }
 
-struct StickyNote {
+export struct StickyNote {
     wx: length,
     wy: length,
     color: color,
     title: string,
-    text: string
+    text: string,
+    ws: int
 }
 
 export component Sandbox inherits Rectangle {
@@ -83,6 +84,10 @@ export component Sandbox inherits Rectangle {
     property <length> pan-oy: 0px;
 
     in-out property <[StickyNote]> notes: [];
+    in property <int> ws-active: 0;
+    in property <int> ws-note-count: 0;
+    callback dirty();
+    callback note-added();
     property <int> color-menu-index: -1;
 
     property <bool> dragging: false;
@@ -100,6 +105,7 @@ export component Sandbox inherits Rectangle {
         self.view-oy = my - (my - self.view-oy) / self.zoom * self._nz;
         self.zoom = self._nz;
         self.menu-open = false;
+        self.dirty();
     }
 
     function zoom-step(factor: float) {
@@ -107,6 +113,7 @@ export component Sandbox inherits Rectangle {
         self.view-ox = self.width / 2 - (self.width / 2 - self.view-ox) / self.zoom * self._nz;
         self.view-oy = self.height / 2 - (self.height / 2 - self.view-oy) / self.zoom * self._nz;
         self.zoom = self._nz;
+        self.dirty();
     }
 
     public function reset-view() {
@@ -114,6 +121,7 @@ export component Sandbox inherits Rectangle {
         self.view-ox = 0px;
         self.view-oy = 0px;
         self.menu-open = false;
+        self.dirty();
     }
 
     function pan-start(mx: length, my: length) {
@@ -134,6 +142,7 @@ export component Sandbox inherits Rectangle {
 
     function pan-end() {
         self.panning = false;
+        self.dirty();
     }
 
     function open-menu(sx: length, sy: length) {
@@ -149,10 +158,13 @@ export component Sandbox inherits Rectangle {
             wy: (sy - self.view-oy) / self.zoom,
             color: #FFF3CD,
             title: "Note",
-            text: ""
+            text: "",
+            ws: self.ws-active
         });
         self.menu-open = false;
         self.color-menu-index = -1;
+        self.dirty();
+        self.note-added();
     }
 
     function set-note-color(index: int, c: color) {
@@ -164,9 +176,11 @@ export component Sandbox inherits Rectangle {
             wy: self.notes[index].wy,
             color: c,
             title: self.notes[index].title,
-            text: self.notes[index].text
+            text: self.notes[index].text,
+            ws: self.notes[index].ws
         };
         self.color-menu-index = -1;
+        self.dirty();
     }
 
     function set-note-text(index: int, t: string) {
@@ -178,8 +192,10 @@ export component Sandbox inherits Rectangle {
             wy: self.notes[index].wy,
             color: self.notes[index].color,
             title: self.notes[index].title,
-            text: t
+            text: t,
+            ws: self.notes[index].ws
         };
+        self.dirty();
     }
 
     function set-note-title(index: int, t: string) {
@@ -191,8 +207,10 @@ export component Sandbox inherits Rectangle {
             wy: self.notes[index].wy,
             color: self.notes[index].color,
             title: t,
-            text: self.notes[index].text
+            text: self.notes[index].text,
+            ws: self.notes[index].ws
         };
+        self.dirty();
     }
 
     function note-drag-start(index: int, sx: length, sy: length) {
@@ -219,13 +237,15 @@ export component Sandbox inherits Rectangle {
             wy: self.drag-ny + (sy - self.drag-my) / self.zoom,
             color: self.notes[i].color,
             title: self.notes[i].title,
-            text: self.notes[i].text
+            text: self.notes[i].text,
+            ws: self.notes[i].ws
         };
     }
 
     function note-drag-end() {
         self.dragging = false;
         self.drag-index = -1;
+        self.dirty();
     }
 
     // ---------- layers ----------
@@ -261,7 +281,7 @@ export component Sandbox inherits Rectangle {
     }
 
     hint := Text {
-        text: root.notes.length == 0 ? "Right-click: New Note   -   Drag note top: move   -   Middle-drag: pan   -   Wheel: zoom" : "";
+        text: root.ws-note-count == 0 ? "Right-click: New Note   -   Drag note top: move   -   Middle-drag: pan   -   Wheel: zoom" : "";
         color: #6e6e6e;
         font-size: 12px;
         x: 0;
@@ -310,6 +330,7 @@ export component Sandbox inherits Rectangle {
     }
 
     for note[i] in root.notes : Rectangle {
+        visible: note.ws == root.ws-active;
         x: note.wx * root.zoom + root.view-ox;
         y: note.wy * root.zoom + root.view-oy;
         width: 200px * root.zoom;

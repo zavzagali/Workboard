@@ -1,4 +1,6 @@
 - [x] Sandbox workspace
+- [x] Workspace tabs + autosave (state persists across restarts)
+- [x] Left sidebar navigation (collapsible, top bar merged into it)
 
 ### 1. Whiteboard
 - [ ] Drawing materials

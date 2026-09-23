@@ -18,7 +18,7 @@ if (NOT Slint_FOUND)
     FetchContent_MakeAvailable(Slint)
 endif()
 
-add_executable(WorkBoard src/main.cpp)
+add_executable(WorkBoard src/main.cpp src/storage.h)
 target_link_libraries(WorkBoard PRIVATE Slint::Slint)
 slint_target_sources(WorkBoard ui/app.slint)
 

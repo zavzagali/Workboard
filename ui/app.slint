@@ -1,8 +1,4 @@
-import { Sandbox } from "sandbox.slint";
-
-struct Workspace {
-    name: string,
-}
+import { Sandbox, StickyNote } from "sandbox.slint";
 
 export component App inherits Window {
     title: "WorkBoard";
@@ -12,145 +8,293 @@ export component App inherits Window {
     min-height: 500px;
     background: #202020;
 
-    in-out property <[Workspace]> workspaces: [{ name: "Workspace 1" }];
-    in-out property <int> ws-active: 0;
+    // ---------- persisted state (C++ mirrors this to disk on `persist`) ----------
+    // Notes of all workspaces live in one flat list, tagged with their
+    // workspace index. View state is kept in parallel per-workspace arrays.
+    in-out property <[string]> ws-names: [];
+    in-out property <[float]> ws-zooms: [];
+    in-out property <[length]> ws-oxs: [];
+    in-out property <[length]> ws-oys: [];
+    in-out property <[int]> ws-counts: [];
+    in-out property <[StickyNote]> notes: [];
+    in-out property <int> ws-active: -1;
+    in-out property <bool> sidebar-open: true;
 
-    public function select-workspace(index: int) {
-        if (index < 0 || index >= self.workspaces.length) {
+    // Handled in C++: writes the whole state to the save file immediately.
+    callback persist();
+
+    function store-view() {
+        if (self.ws-active < 0 || self.ws-active >= self.ws-names.length) {
             return;
         }
+        self.ws-zooms[self.ws-active] = sandbox.zoom;
+        self.ws-oxs[self.ws-active] = sandbox.view-ox;
+        self.ws-oys[self.ws-active] = sandbox.view-oy;
+    }
+
+    function show-active() {
+        if (self.ws-active < 0 || self.ws-active >= self.ws-names.length) {
+            return;
+        }
+        sandbox.zoom = self.ws-zooms[self.ws-active];
+        sandbox.view-ox = self.ws-oxs[self.ws-active];
+        sandbox.view-oy = self.ws-oys[self.ws-active];
+    }
+
+    function touch() {
+        self.store-view();
+        self.persist();
+    }
+
+    public function select-workspace(index: int) {
+        if (index < 0 || index >= self.ws-names.length || index == self.ws-active) {
+            return;
+        }
+        self.store-view();
         self.ws-active = index;
     }
 
     public function rename-workspace(index: int, t: string) {
-        if (index < 0 || index >= self.workspaces.length) {
+        if (index < 0 || index >= self.ws-names.length) {
             return;
         }
-        self.workspaces[index] = { name: t };
+        self.ws-names[index] = t;
+        self.persist();
     }
 
     public function add-workspace() {
-        self.workspaces.push({ name: "Workspace " + (self.workspaces.length + 1) });
-        self.ws-active = self.workspaces.length - 1;
+        self.store-view();
+        self.ws-names.push("Workspace " + (self.ws-names.length + 1));
+        self.ws-zooms.push(1.0);
+        self.ws-oxs.push(0px);
+        self.ws-oys.push(0px);
+        self.ws-counts.push(0);
+        self.ws-active = self.ws-names.length - 1;
     }
 
-    VerticalLayout {
+    // Fires on user switches and once at startup (C++ sets ws-active last),
+    // so the canvas always shows the active workspace and it gets saved.
+    changed ws-active => {
+        root.show-active();
+        root.persist();
+    }
+
+    HorizontalLayout {
         spacing: 0;
 
-        // ---------- thin top workspace bar ----------
-        topbar := Rectangle {
-            height: 32px;
-            background: #1e1e1e;
+        // ---------- sidebar: navigation + actions (top bar was merged here) ----------
+        sidebar := Rectangle {
+            width: root.sidebar-open ? 180px : 30px;
+            background: #1a1a1a;
             clip: true;
 
-            bar-layout := HorizontalLayout {
+            animate width {
+                duration: 150ms;
+                easing: ease-in-out;
+            }
+
+            // Full content, only when open.
+            side-layout := VerticalLayout {
+                visible: root.sidebar-open;
                 x: 0;
                 y: 0;
                 width: 100%;
                 height: 100%;
-                padding-left: 8px;
-                padding-right: 8px;
-                padding-top: 5px;
-                padding-bottom: 4px;
-                spacing: 4px;
-                alignment: start;
+                spacing: 2px;
+                padding-left: 6px;
+                padding-right: 6px;
+                padding-top: 6px;
+                padding-bottom: 6px;
 
-                for ws[tidx] in root.workspaces : tab := Rectangle {
-                    width: 130px;
-                    background: tidx == root.ws-active ? #333333 : #00000000;
-                    border-radius: 4px;
+                side-header := HorizontalLayout {
+                    height: 24px;
+                    spacing: 4px;
+                    alignment: start;
 
-                    if tidx == root.ws-active : Rectangle {
-                        y: parent.height - 2px;
+                    collapse-btn := Rectangle {
+                        width: 24px;
+                        background: collapse-ta.has-hover ? #404040 : #2b2b2b;
+                        border-color: #4a4a4a;
+                        border-width: 1px;
+                        border-radius: 4px;
+
+                        Text {
+                            text: "<";
+                            color: #e0e0e0;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        collapse-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.sidebar-open = false;
+                                root.persist();
+                            }
+                        }
+                    }
+
+                }
+
+                list-scroll := Flickable {
+                    vertical-stretch: 1;
+                    viewport-height: root.ws-names.length * 32px;
+
+                    list-layout := VerticalLayout {
                         width: 100%;
-                        height: 2px;
-                        background: #4a9eff;
+                        spacing: 2px;
+                        alignment: start;
+
+                        for nm[tidx] in root.ws-names : row := Rectangle {
+                            height: 30px;
+                            background: tidx == root.ws-active ? #333333 : (row-ta.has-hover ? #2a2a2a : #00000000);
+                            border-radius: 4px;
+
+                            if tidx == root.ws-active : Rectangle {
+                                x: 0;
+                                y: 0;
+                                width: 2px;
+                                height: 100%;
+                                background: #4a9eff;
+                            }
+
+                            row-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.select-workspace(tidx);
+                                }
+                            }
+
+                            name-input := TextInput {
+                                x: 8px;
+                                y: 0;
+                                width: parent.width - 42px;
+                                height: 100%;
+                                text: nm;
+                                color: tidx == root.ws-active ? #ffffff : #aaaaaa;
+                                font-size: 12px;
+                                single-line: true;
+                                vertical-alignment: center;
+                                z: 1;
+                                edited => {
+                                    root.rename-workspace(tidx, self.text);
+                                }
+                                accepted => {
+                                    root.select-workspace(tidx);
+                                    self.clear-focus();
+                                }
+                                changed has-focus => {
+                                    if (self.has-focus) {
+                                        root.select-workspace(tidx);
+                                    } else if (self.text == "") {
+                                        root.rename-workspace(tidx, "Workspace " + (tidx + 1));
+                                    }
+                                }
+                            }
+
+                            count := Text {
+                                x: parent.width - 30px;
+                                y: 0;
+                                width: 22px;
+                                height: 100%;
+                                text: tidx < root.ws-counts.length ? "" + root.ws-counts[tidx] : "";
+                                color: #777777;
+                                font-size: 11px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                     }
 
-                    ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => {
-                            root.select-workspace(tidx);
-                        }
-                    }
+                    new-row := Rectangle {
+                        height: 30px;
+                        background: new-ta.has-hover ? #333333 : #00000000;
+                        border-radius: 4px;
 
-                    name-input := TextInput {
-                        x: 8px;
-                        y: 0;
-                        width: parent.width - 16px;
-                        height: 100%;
-                        text: ws.name;
-                        color: tidx == root.ws-active ? #ffffff : #aaaaaa;
-                        font-size: 12px;
-                        single-line: true;
-                        vertical-alignment: center;
-                        z: 1;
-                        edited => {
-                            root.rename-workspace(tidx, self.text);
+                        Text {
+                            x: 8px;
+                            height: 100%;
+                            text: "+ New workspace";
+                            color: #aaaaaa;
+                            font-size: 12px;
+                            vertical-alignment: center;
                         }
-                        accepted => {
-                            root.select-workspace(tidx);
-                            self.clear-focus();
-                        }
-                        changed has-focus => {
-                            if (self.has-focus) {
-                                root.select-workspace(tidx);
-                            } else if (self.text == "") {
-                                root.rename-workspace(tidx, "Workspace " + (tidx + 1));
+
+                        new-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.add-workspace();
                             }
                         }
                     }
                 }
 
-                filler := Rectangle {
-                    horizontal-stretch: 1;
+            // Slim rail button, only when collapsed.
+            expand-btn := Rectangle {
+                visible: !root.sidebar-open;
+                x: 3px;
+                y: 6px;
+                width: 24px;
+                height: 24px;
+                background: expand-ta.has-hover ? #404040 : #2b2b2b;
+                border-color: #4a4a4a;
+                border-width: 1px;
+                border-radius: 4px;
+
+                Text {
+                    text: ">";
+                    color: #e0e0e0;
+                    font-size: 12px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
                 }
 
-                add-btn := Rectangle {
-                    width: 24px;
-                    background: add-ta.has-hover ? #404040 : #2b2b2b;
-                    border-color: #4a4a4a;
-                    border-width: 1px;
-                    border-radius: 4px;
-
-                    Text {
-                        text: "+";
-                        color: #e0e0e0;
-                        font-size: 14px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        width: 100%;
-                        height: 100%;
-                    }
-
-                    add-ta := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => {
-                            root.add-workspace();
-                        }
+                expand-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.sidebar-open = true;
+                        root.persist();
                     }
                 }
             }
 
             Rectangle {
-                y: parent.height - 1px;
-                width: 100%;
-                height: 1px;
+                x: parent.width - 1px;
+                width: 1px;
+                height: 100%;
                 background: #383838;
             }
         }
 
-        // ---------- workspace content (one Sandbox per workspace) ----------
+        // ---------- workspace canvas ----------
         content := Rectangle {
-            vertical-stretch: 1;
+            horizontal-stretch: 1;
             clip: true;
 
-            for w[cidx] in root.workspaces : Sandbox {
+            sandbox := Sandbox {
                 x: 0;
                 y: 0;
                 width: 100%;
                 height: 100%;
-                visible: cidx == root.ws-active;
+                notes <=> root.notes;
+                ws-active: root.ws-active;
+                ws-note-count: root.ws-active < 0 || root.ws-active >= root.ws-counts.length ? 0 : root.ws-counts[root.ws-active];
+                dirty => {
+                    root.touch();
+                }
+                note-added => {
+                    if (root.ws-active >= 0 && root.ws-active < root.ws-counts.length) {
+                        root.ws-counts[root.ws-active] = root.ws-counts[root.ws-active] + 1;
+                    }
+                }
             }
         }
     }
